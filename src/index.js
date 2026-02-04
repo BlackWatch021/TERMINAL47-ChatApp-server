@@ -1,6 +1,6 @@
 import express from "express"
 import { createServer } from "http";
-import {Server} from "socket.io";
+import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 
@@ -11,6 +11,9 @@ const app = express();
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+const server = createServer(app);
+const io = new Server(server);
+
 app.get("/", (req, res) => {
     res.status(200).json("Hello World!");
 });
@@ -19,4 +22,4 @@ const port = process.env.PORT || 8001;
 
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
-});;
+});
