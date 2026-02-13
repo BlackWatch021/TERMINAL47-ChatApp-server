@@ -10,20 +10,21 @@ const socketEvent = (io) => {
     socket.on("create_room", (data, callback) => {
       try {
         const { roomName, durationMinutes } = data;
-        console.log({ roomName, durationMinutes });
+        console.log(roomName, durationMinutes);
 
         // Validate input
         if (!roomName || !durationMinutes) {
-          return callback({
+          callback({
             success: false,
-            error: "Room name and duration required",
+            error: "Roomname and duration of room is required",
           });
         }
 
-        if (durationMinutes < 1 || durationMinutes > 1440) {
-          return callback({
+        if (durationMinutes < 1 || durationMinutes > 30) {
+          console.log("Duration must be between 1 and 30");
+          callback({
             success: false,
-            error: "Duration must be between 1 and 1440 minutes",
+            error: "Duration must be between 1 and 30 minutes",
           });
         }
 
@@ -31,21 +32,17 @@ const socketEvent = (io) => {
         const room = roomManager.createRoom(roomName, durationMinutes);
 
         // Join the creator to the room
-        socket.join(room.roomId);
-        socket.data.roomId = room.roomId;
-        socket.data.userId = socket.id;
 
         callback({
           success: true,
           roomId: room.roomId,
-          roomName: room.roomName,
-          expiresAt: room.expiresAt,
         });
 
-        console.log(`✅ Room created & user joined: ${room.roomId}`);
+        console.log(`✅ Room created successfully, roomId : ${room.roomId}`);
       } catch (error) {
         console.error("Error creating room:", error);
         callback({ success: false, error: "Failed to create room" });
+        console.log("Failed to create room");
       }
     });
 
