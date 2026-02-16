@@ -10,38 +10,42 @@ const socketEvent = (io) => {
     socket.on("create_room", (data, callback) => {
       try {
         const { roomName, durationMinutes } = data;
-        console.log(roomName, durationMinutes);
+        console.log(
+          "Room name",
+          roomName,
+          "Duraction in minutes",
+          durationMinutes,
+        );
 
         // Validate input
         if (!roomName || !durationMinutes) {
-          callback({
+          return callback({
             success: false,
-            error: "Roomname and duration of room is required",
+            message: "Roomname and duration of room is required",
           });
         }
 
         if (durationMinutes < 1 || durationMinutes > 30) {
           console.log("Duration must be between 1 and 30");
-          callback({
+          return callback({
             success: false,
-            error: "Duration must be between 1 and 30 minutes",
+            message: "Duration must be between 1 and 30 minutes",
           });
         }
 
         // Create room
         const room = roomManager.createRoom(roomName, durationMinutes);
 
-        // Join the creator to the room
-
         callback({
           success: true,
           roomId: room.roomId,
+          message: "Room created",
         });
 
         console.log(`✅ Room created successfully, roomId : ${room.roomId}`);
       } catch (error) {
         console.error("Error creating room:", error);
-        callback({ success: false, error: "Failed to create room" });
+        callback({ success: false, message: "Failed to create room" || error });
         console.log("Failed to create room");
       }
     });
