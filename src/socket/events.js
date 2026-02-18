@@ -54,11 +54,12 @@ const socketEvent = (io) => {
     socket.on("join_room", (data, callback) => {
       try {
         const { roomId, userName } = data;
+        console.log("user joining the room", roomId, userName);
 
         if (!roomId || !userName) {
-          return callback({
+          callback({
             success: false,
-            error: "Room ID and user name required",
+            message: "Room ID and user name required",
           });
         }
 
@@ -66,9 +67,9 @@ const socketEvent = (io) => {
         const result = roomManager.addUser(roomId, socket.id, userName);
 
         if (!result.success) {
-          return callback({
+          callback({
             success: false,
-            error: result.error,
+            message: result.message,
           });
         }
 
@@ -82,6 +83,7 @@ const socketEvent = (io) => {
         callback({
           success: true,
           room: result.room,
+          message: "User joined the room",
         });
 
         // Notify other users in room
@@ -94,7 +96,7 @@ const socketEvent = (io) => {
         console.log(`✅ User joined room: ${roomId} (${userName})`);
       } catch (error) {
         console.error("Error joining room:", error);
-        callback({ success: false, error: "Failed to join room" });
+        callback({ success: false, message: "Failed to join room" });
       }
     });
 
@@ -107,7 +109,7 @@ const socketEvent = (io) => {
         if (!roomId || !message) {
           return callback({
             success: false,
-            error: "Room ID and message required",
+            message: "Room ID and message required",
           });
         }
 
@@ -115,25 +117,52 @@ const socketEvent = (io) => {
         if (!room) {
           return callback({
             success: false,
-            error: "Room not found",
+            message: "Room not found",
           });
         }
 
         const messageData = {
-          id: uuidv4(),
-          userId,
           userName,
           message: message.trim(),
-          timestamp: new Date(),
         };
+        // const messageData = {
+        //   id: uuidv4(),
+        //   userId,
+        //   userName,
+        //   message: message.trim(),
+        //   timestamp: new Date(),
+        // };
 
         // Broadcast message to room
         io.to(roomId).emit("receive_message", messageData);
 
-        callback({ success: true });
+        callback({ success: true, message: "Message send successfully" });
       } catch (error) {
         console.error("Error sending message:", error);
-        callback({ success: false, error: "Failed to send message" });
+        callback({ success: false, message: "Failed to send message" });
+      }
+    });
+
+    // ======== ROOM EXISTS ========
+    socket.on("room_exists", (data, callback) => {
+      try {
+        const { roomId } = data;
+        if (!roomId) {
+          callback({ success: false, message: "Room id is necessary" });
+        }
+
+        const result = roomManager.roomExists(roomId);
+
+        if (result.success) {
+          callback({ success: true, message: "Room exists" });
+        } else {
+          callback({ success: false, message: "Room doesn't exists" });
+        }
+      } catch (error) {
+        callback({
+          success: false,
+          message: "Error finding if the room exists or not",
+        });
       }
     });
 

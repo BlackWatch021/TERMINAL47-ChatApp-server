@@ -38,17 +38,32 @@ class RoomManager {
     };
   }
 
+  // Check If room exists or not
+  roomExists(roomId) {
+    const room = this.rooms.get(roomId);
+
+    if (!room) {
+      return { success: false, reason: "not_found" };
+    }
+
+    if (new Date() > room.expiresAt) {
+      return { success: false, reason: "expired" };
+    }
+
+    return { success: true, room };
+  }
+
   // Add user to room
   addUser(roomId, userId, userName) {
     const room = this.rooms.get(roomId);
 
     if (!room) {
-      return { success: false, error: "Room not found" };
+      return { success: false, message: "Room not found" };
     }
 
     // Check if room has expired
     if (new Date() > room.expiresAt) {
-      return { success: false, error: "Room has expired" };
+      return { success: false, message: "Room has expired" };
     }
 
     // Add user to room
