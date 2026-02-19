@@ -34,7 +34,7 @@ const socketEvent = (io) => {
         }
 
         // Create room
-        const room = roomManager.createRoom(roomName, durationMinutes);
+        const room = roomManager.createRoom(roomName, durationMinutes, io);
 
         callback({
           success: true,
@@ -178,12 +178,16 @@ const socketEvent = (io) => {
 
         if (room) {
           // Notify others
-          io.to(roomId).emit("user_left", {
+          socket.to(roomId).emit("user_left", {
             userId,
             userName,
             userCount: room.userCount,
           });
         } else {
+          io.to(roomId).emit("room_disposed", {
+            success: false,
+            message: "Room doesn't exists",
+          });
           console.log(`🗑️  Room auto-disposed (empty): ${roomId}`);
         }
       }

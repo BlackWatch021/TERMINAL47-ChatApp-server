@@ -8,7 +8,7 @@ class RoomManager {
   }
 
   // Create a new room
-  createRoom(roomName, durationMinutes) {
+  createRoom(roomName, durationMinutes, io) {
     const roomId = this.generateRoomId();
 
     const room = {
@@ -17,14 +17,14 @@ class RoomManager {
       createdAt: new Date(),
       expiresAt: new Date(Date.now() + durationMinutes * 60 * 1000),
       durationMinutes,
-      users: new Map(), // userId -> user data
-      messages: [], // Optional: keep in-memory chat history during session
+      users: new Map(),
+      messages: [],
     };
 
     this.rooms.set(roomId, room);
 
-    // Set auto-disposal timer
-    this.setRoomTimer(roomId, durationMinutes);
+    // Set auto-disposal timer — pass io so we can notify clients
+    this.setRoomTimer(roomId, durationMinutes, io);
 
     console.log(
       `✅ Room created: ${roomId} (${roomName}) - Expires in ${durationMinutes} min`,
@@ -95,9 +95,9 @@ class RoomManager {
     room.users.delete(userId);
 
     // Delete room if empty
-    if (room.users.size === 0) {
-      this.disposeRoom(roomId);
-    }
+    // if (room.users.size === 0) {
+    //   this.disposeRoom(roomId);
+    // }
 
     return true;
   }
@@ -119,9 +119,15 @@ class RoomManager {
   }
 
   // Set timer for room disposal
-  setRoomTimer(roomId, durationMinutes) {
+  setRoomTimer(roomId, durationMinutes, io) {
     const timer = setTimeout(
       () => {
+        // Notify all clients in the room BEFORE disposing
+        if (io) {
+          io.to(roomId).emit("room_disposed", {
+            message: "Room has expired",
+          });
+        }
         this.disposeRoom(roomId);
       },
       durationMinutes * 60 * 1000,
