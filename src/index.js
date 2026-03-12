@@ -4,6 +4,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import dotenv from "dotenv";
 import socketEvent from "./socket/events.js";
+import client from "./redisClient.js";
 
 dotenv.config();
 const port = process.env.PORT || 8001;
@@ -22,12 +23,12 @@ app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.get("/", (req, res) => {
+app.get("/", async (req, res) => {
   res.status(200).json("Hello World!");
 });
 
 // Initialize socket events
-socketEvent(io);
+socketEvent(io, client);
 
 // io.on("connection", (socket) => {
 //   console.log("A user connected");
