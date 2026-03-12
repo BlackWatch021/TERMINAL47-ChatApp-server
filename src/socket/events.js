@@ -1,8 +1,7 @@
 // socket/events.js
 import roomManager from "../utils/roomManager.js";
-import { v4 as uuidv4 } from "uuid";
 
-const socketEvent = (io) => {
+const socketEvent = async (io, client) => {
   io.on("connection", (socket) => {
     console.log(`👤 User connected: ${socket.id}`);
 
