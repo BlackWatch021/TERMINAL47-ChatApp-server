@@ -1,174 +1,203 @@
 // utils/roomManager.js
 import { v4 as uuidv4 } from "uuid";
 
-class RoomManager {
-  constructor() {
-    this.rooms = new Map(); // Store active rooms
-    this.roomTimers = new Map(); // Store disposal timers
-  }
+const createRoom = async (roomName, durationMinutes, client) => {
+  const roomId = uuidv4();
 
-  // Create a new room
-  createRoom(roomName, durationMinutes, io) {
-    const roomId = this.generateRoomId();
+  const createdAt = Date.now();
+  const expiresAt = createdAt + durationMinutes * 60 * 1000;
 
-    const room = {
-      id: roomId,
-      name: roomName,
-      createdAt: new Date(),
-      expiresAt: new Date(Date.now() + durationMinutes * 60 * 1000),
-      durationMinutes,
-      users: new Map(),
-      messages: [],
-    };
+  const roomKey = `room:${roomId}:meta`;
+  const userKey = `room:${roomId}:users`;
 
-    this.rooms.set(roomId, room);
+  //Save room metadata
 
-    // Set auto-disposal timer — pass io so we can notify clients
-    this.setRoomTimer(roomId, durationMinutes, io);
+  await client.hset(roomKey, {
+    id: roomId,
+    name: roomName,
+    createdAt,
+    expiresAt,
+    durationMinutes,
+  });
 
-    console.log(
-      `✅ Room created: ${roomId} (${roomName}) - Expires in ${durationMinutes} min`,
-    );
+  // TTL in seconds  (self destruction)
+  const ttl = durationMinutes * 60;
 
-    return {
-      roomId,
-      roomName,
-      createdAt: room.createdAt,
-      expiresAt: room.expiresAt,
-    };
-  }
+  await client.expire(roomKey, ttl);
+  await client.expire(userKey, ttl);
 
-  // Check If room exists or not
-  roomExists(roomId) {
-    const room = this.rooms.get(roomId);
+  return { roomId, roomName, createdAt, expiresAt, durationMinutes, users: [] };
+};
 
-    if (!room) {
-      return { success: false, reason: "not_found" };
-    }
+export { createRoom };
+// class RoomManager {
+//   constructor() {
+//     this.rooms = new Map(); // Store active rooms
+//     this.roomTimers = new Map(); // Store disposal timers
+//   }
 
-    if (new Date() > room.expiresAt) {
-      return { success: false, reason: "expired" };
-    }
+//   // Create a new room
+//   createRoom(roomName, durationMinutes, io) {
+//     const roomId = this.generateRoomId();
 
-    return { success: true, room };
-  }
+//     const room = {
+//       id: roomId,
+//       name: roomName,
+//       createdAt: new Date(),
+//       expiresAt: new Date(Date.now() + durationMinutes * 60 * 1000),
+//       durationMinutes,
+//       users: new Map(),
+//       messages: [],
+//     };
 
-  // Add user to room
-  addUser(roomId, userId, userName) {
-    const room = this.rooms.get(roomId);
+//     this.rooms.set(roomId, room);
 
-    if (!room) {
-      return { success: false, message: "Room not found" };
-    }
+//     // Set auto-disposal timer — pass io so we can notify clients
+//     this.setRoomTimer(roomId, durationMinutes, io);
 
-    // Check if room has expired
-    if (new Date() > room.expiresAt) {
-      return { success: false, message: "Room has expired" };
-    }
+//     console.log(
+//       `✅ Room created: ${roomId} (${roomName}) - Expires in ${durationMinutes} min`,
+//     );
 
-    // Add user to room
-    const user = {
-      id: userId,
-      name: userName,
-      joinedAt: new Date(),
-    };
+//     return {
+//       roomId,
+//       roomName,
+//       createdAt: room.createdAt,
+//       expiresAt: room.expiresAt,
+//     };
+//   }
 
-    room.users.set(userId, user);
+//   // Check If room exists or not
+//   roomExists(roomId) {
+//     const room = this.rooms.get(roomId);
 
-    return {
-      success: true,
-      room: {
-        id: room.id,
-        name: room.name,
-        users: Array.from(room.users.values()),
-        timeRemaining: Math.max(0, room.expiresAt - new Date()),
-      },
-    };
-  }
+//     if (!room) {
+//       return { success: false, reason: "not_found" };
+//     }
 
-  // Remove user from room
-  removeUser(roomId, userId) {
-    const room = this.rooms.get(roomId);
+//     if (new Date() > room.expiresAt) {
+//       return { success: false, reason: "expired" };
+//     }
 
-    if (!room) return false;
+//     return { success: true, room };
+//   }
 
-    room.users.delete(userId);
+//   // Add user to room
+//   addUser(roomId, userId, userName) {
+//     const room = this.rooms.get(roomId);
 
-    // Delete room if empty
-    // if (room.users.size === 0) {
-    //   this.disposeRoom(roomId);
-    // }
+//     if (!room) {
+//       return { success: false, message: "Room not found" };
+//     }
 
-    return true;
-  }
+//     // Check if room has expired
+//     if (new Date() > room.expiresAt) {
+//       return { success: false, message: "Room has expired" };
+//     }
 
-  // Get room info
-  getRoom(roomId) {
-    const room = this.rooms.get(roomId);
+//     // Add user to room
+//     const user = {
+//       id: userId,
+//       name: userName,
+//       joinedAt: new Date(),
+//     };
 
-    if (!room) return null;
+//     room.users.set(userId, user);
 
-    return {
-      id: room.id,
-      name: room.name,
-      users: Array.from(room.users.values()),
-      userCount: room.users.size,
-      expiresAt: room.expiresAt,
-      timeRemaining: Math.max(0, room.expiresAt - new Date()),
-    };
-  }
+//     return {
+//       success: true,
+//       room: {
+//         id: room.id,
+//         name: room.name,
+//         users: Array.from(room.users.values()),
+//         timeRemaining: Math.max(0, room.expiresAt - new Date()),
+//       },
+//     };
+//   }
 
-  // Set timer for room disposal
-  setRoomTimer(roomId, durationMinutes, io) {
-    const timer = setTimeout(
-      () => {
-        // Notify all clients in the room BEFORE disposing
-        if (io) {
-          io.to(roomId).emit("room_disposed", {
-            message: "Room has expired",
-          });
-        }
-        this.disposeRoom(roomId);
-      },
-      durationMinutes * 60 * 1000,
-    );
+//   // Remove user from room
+//   removeUser(roomId, userId) {
+//     const room = this.rooms.get(roomId);
 
-    this.roomTimers.set(roomId, timer);
-  }
+//     if (!room) return false;
 
-  // Dispose room (cleanup)
-  disposeRoom(roomId) {
-    const room = this.rooms.get(roomId);
+//     room.users.delete(userId);
 
-    if (!room) return;
+//     // Delete room if empty
+//     // if (room.users.size === 0) {
+//     //   this.disposeRoom(roomId);
+//     // }
 
-    // Clear timer
-    const timer = this.roomTimers.get(roomId);
-    if (timer) {
-      clearTimeout(timer);
-      this.roomTimers.delete(roomId);
-    }
+//     return true;
+//   }
 
-    // Delete room
-    this.rooms.delete(roomId);
+//   // Get room info
+//   getRoom(roomId) {
+//     const room = this.rooms.get(roomId);
 
-    console.log(`🗑️  Room disposed: ${roomId}`);
-  }
+//     if (!room) return null;
 
-  // Generate unique room ID
-  generateRoomId() {
-    return uuidv4();
-  }
+//     return {
+//       id: room.id,
+//       name: room.name,
+//       users: Array.from(room.users.values()),
+//       userCount: room.users.size,
+//       expiresAt: room.expiresAt,
+//       timeRemaining: Math.max(0, room.expiresAt - new Date()),
+//     };
+//   }
 
-  // Get all active rooms (optional: for debugging)
-  getAllRooms() {
-    return Array.from(this.rooms.values()).map((room) => ({
-      id: room.id,
-      name: room.name,
-      userCount: room.users.size,
-      expiresAt: room.expiresAt,
-    }));
-  }
-}
+//   // Set timer for room disposal
+//   setRoomTimer(roomId, durationMinutes, io) {
+//     const timer = setTimeout(
+//       () => {
+//         // Notify all clients in the room BEFORE disposing
+//         if (io) {
+//           io.to(roomId).emit("room_disposed", {
+//             message: "Room has expired",
+//           });
+//         }
+//         this.disposeRoom(roomId);
+//       },
+//       durationMinutes * 60 * 1000,
+//     );
 
-export default new RoomManager();
+//     this.roomTimers.set(roomId, timer);
+//   }
+
+//   // Dispose room (cleanup)
+//   disposeRoom(roomId) {
+//     const room = this.rooms.get(roomId);
+
+//     if (!room) return;
+
+//     // Clear timer
+//     const timer = this.roomTimers.get(roomId);
+//     if (timer) {
+//       clearTimeout(timer);
+//       this.roomTimers.delete(roomId);
+//     }
+
+//     // Delete room
+//     this.rooms.delete(roomId);
+
+//     console.log(`🗑️  Room disposed: ${roomId}`);
+//   }
+
+//   // Generate unique room ID
+//   generateRoomId() {
+//     return uuidv4();
+//   }
+
+//   // Get all active rooms (optional: for debugging)
+//   getAllRooms() {
+//     return Array.from(this.rooms.values()).map((room) => ({
+//       id: room.id,
+//       name: room.name,
+//       userCount: room.users.size,
+//       expiresAt: room.expiresAt,
+//     }));
+//   }
+// }
+
+// export default new RoomManager();
