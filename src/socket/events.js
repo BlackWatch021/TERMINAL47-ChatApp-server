@@ -1,5 +1,6 @@
 // socket/events.js
-import roomManager from "../utils/roomManager.js";
+// import roomManager from "../utils/roomManager.js";
+import { createRoom } from "../utils/roomManager.js";
 
 const socketEvent = async (io, client) => {
   io.on("connection", (socket) => {
@@ -33,7 +34,8 @@ const socketEvent = async (io, client) => {
         }
 
         // Create room
-        const room = roomManager.createRoom(roomName, durationMinutes, io);
+        // const room = roomManager.createRoom(
+        const room = createRoom(roomName, durationMinutes, client);
 
         callback({
           success: true,
