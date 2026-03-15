@@ -1,17 +1,16 @@
 // utils/roomManager.js
 import { v4 as uuidv4 } from "uuid";
 
+// Create room
 const createRoom = async (roomName, durationMinutes, client) => {
   const roomId = uuidv4();
 
   const createdAt = Date.now();
   const expiresAt = createdAt + durationMinutes * 60 * 1000;
 
-  const roomKey = `room:${roomId}:meta`;
-  const userKey = `room:${roomId}:users`;
+  const roomKey = `room:${roomId}`;
 
   //Save room metadata
-
   await client.hset(roomKey, {
     id: roomId,
     name: roomName,
@@ -20,184 +19,114 @@ const createRoom = async (roomName, durationMinutes, client) => {
     durationMinutes,
   });
 
-  // TTL in seconds  (self destruction)
+  // TTL in seconds (time to live)
   const ttl = durationMinutes * 60;
 
   await client.expire(roomKey, ttl);
-  await client.expire(userKey, ttl);
 
   return { roomId, roomName, createdAt, expiresAt, durationMinutes, users: [] };
 };
 
-export { createRoom };
-// class RoomManager {
-//   constructor() {
-//     this.rooms = new Map(); // Store active rooms
-//     this.roomTimers = new Map(); // Store disposal timers
-//   }
+// Add user to room
+const addUser = async (roomId, userId, userName, client) => {
+  // const room = this.rooms.get(roomId);
 
-//   // Create a new room
-//   createRoom(roomName, durationMinutes, io) {
-//     const roomId = this.generateRoomId();
+  const roomKey = `room:${roomId}`;
+  const userKey = `users:${roomId}`;
 
-//     const room = {
-//       id: roomId,
-//       name: roomName,
-//       createdAt: new Date(),
-//       expiresAt: new Date(Date.now() + durationMinutes * 60 * 1000),
-//       durationMinutes,
-//       users: new Map(),
-//       messages: [],
-//     };
+  //Check if room exists
+  const room = await roomExists(roomId, client);
 
-//     this.rooms.set(roomId, room);
+  if (!room.success) {
+    return { success: room.success, message: room.message };
+  }
 
-//     // Set auto-disposal timer — pass io so we can notify clients
-//     this.setRoomTimer(roomId, durationMinutes, io);
+  // Add user to Redis
+  await client.hset(userKey, userId, userName);
 
-//     console.log(
-//       `✅ Room created: ${roomId} (${roomName}) - Expires in ${durationMinutes} min`,
-//     );
+  // Sync TTL for users key if needed
+  const usersTTL = await client.ttl(userKey);
 
-//     return {
-//       roomId,
-//       roomName,
-//       createdAt: room.createdAt,
-//       expiresAt: room.expiresAt,
-//     };
-//   }
+  if (usersTTL === -1) {
+    const roomTTL = await client.ttl(roomKey);
+    await client.expire(userKey, roomTTL);
+  }
 
-//   // Check If room exists or not
-//   roomExists(roomId) {
-//     const room = this.rooms.get(roomId);
+  // Get all users
+  const usersObject = await client.hgetall(userKey);
 
-//     if (!room) {
-//       return { success: false, reason: "not_found" };
-//     }
+  const users = Object.entries(usersObject).map(([id, name]) => ({
+    id,
+    name,
+  }));
 
-//     if (new Date() > room.expiresAt) {
-//       return { success: false, reason: "expired" };
-//     }
+  // Get remaining time
+  const ttl = await client.ttl(roomKey);
 
-//     return { success: true, room };
-//   }
+  return {
+    success: true,
+    room: {
+      id: roomId,
+      users,
+      timeRemaining: ttl * 1000, //convert to ms}
+    },
+  };
+};
 
-//   // Add user to room
-//   addUser(roomId, userId, userName) {
-//     const room = this.rooms.get(roomId);
+// Remove user from room
+const removeUser = async (roomId, userId, client) => {
+  const roomKey = `room:${roomId}`;
+  const userKey = `users:${roomId}`;
 
-//     if (!room) {
-//       return { success: false, message: "Room not found" };
-//     }
+  //Check if room exists
+  const room = await roomExists(roomId, client);
 
-//     // Check if room has expired
-//     if (new Date() > room.expiresAt) {
-//       return { success: false, message: "Room has expired" };
-//     }
+  if (!room.success) {
+    return { success: room.success, message: room.message };
+  }
 
-//     // Add user to room
-//     const user = {
-//       id: userId,
-//       name: userName,
-//       joinedAt: new Date(),
-//     };
+  // Remove user
+  await client.hdel(userKey, userId);
 
-//     room.users.set(userId, user);
+  // Get remaining users
+  const usersObject = await client.hgetall(userKey);
 
-//     return {
-//       success: true,
-//       room: {
-//         id: room.id,
-//         name: room.name,
-//         users: Array.from(room.users.values()),
-//         timeRemaining: Math.max(0, room.expiresAt - new Date()),
-//       },
-//     };
-//   }
+  const users = Object.entries(usersObject).map(([id, name]) => ({
+    id,
+    name,
+  }));
 
-//   // Remove user from room
-//   removeUser(roomId, userId) {
-//     const room = this.rooms.get(roomId);
+  return {
+    success: true,
+    users,
+    userCount: users.length,
+  };
+};
+// Check If room exists or not
+const roomExists = async (roomId, client) => {
+  const roomKey = `room:${roomId}`;
+  const room = await client.hgetall(roomKey);
 
-//     if (!room) return false;
+  if (!room || Object.keys(room).length === 0) {
+    return { success: false, message: "Room not found" };
+  }
 
-//     room.users.delete(userId);
+  return { success: true, room };
+};
 
-//     // Delete room if empty
-//     // if (room.users.size === 0) {
-//     //   this.disposeRoom(roomId);
-//     // }
+// Set a server-side timer that notifies clients when the room expires.
+// Redis TTL already cleans up the data — this just fires the socket event.
+const setRoomTimer = (roomId, durationMinutes, io) => {
+  setTimeout(
+    () => {
+      console.log(`⏰ Room expired → notifying clients: ${roomId}`);
+      io.to(roomId).emit("room_disposed", {
+        success: false,
+        message: "Room has expired",
+      });
+    },
+    durationMinutes * 60 * 1000,
+  );
+};
 
-//     return true;
-//   }
-
-//   // Get room info
-//   getRoom(roomId) {
-//     const room = this.rooms.get(roomId);
-
-//     if (!room) return null;
-
-//     return {
-//       id: room.id,
-//       name: room.name,
-//       users: Array.from(room.users.values()),
-//       userCount: room.users.size,
-//       expiresAt: room.expiresAt,
-//       timeRemaining: Math.max(0, room.expiresAt - new Date()),
-//     };
-//   }
-
-//   // Set timer for room disposal
-//   setRoomTimer(roomId, durationMinutes, io) {
-//     const timer = setTimeout(
-//       () => {
-//         // Notify all clients in the room BEFORE disposing
-//         if (io) {
-//           io.to(roomId).emit("room_disposed", {
-//             message: "Room has expired",
-//           });
-//         }
-//         this.disposeRoom(roomId);
-//       },
-//       durationMinutes * 60 * 1000,
-//     );
-
-//     this.roomTimers.set(roomId, timer);
-//   }
-
-//   // Dispose room (cleanup)
-//   disposeRoom(roomId) {
-//     const room = this.rooms.get(roomId);
-
-//     if (!room) return;
-
-//     // Clear timer
-//     const timer = this.roomTimers.get(roomId);
-//     if (timer) {
-//       clearTimeout(timer);
-//       this.roomTimers.delete(roomId);
-//     }
-
-//     // Delete room
-//     this.rooms.delete(roomId);
-
-//     console.log(`🗑️  Room disposed: ${roomId}`);
-//   }
-
-//   // Generate unique room ID
-//   generateRoomId() {
-//     return uuidv4();
-//   }
-
-//   // Get all active rooms (optional: for debugging)
-//   getAllRooms() {
-//     return Array.from(this.rooms.values()).map((room) => ({
-//       id: room.id,
-//       name: room.name,
-//       userCount: room.users.size,
-//       expiresAt: room.expiresAt,
-//     }));
-//   }
-// }
-
-// export default new RoomManager();
+export { createRoom, addUser, roomExists, removeUser, setRoomTimer };

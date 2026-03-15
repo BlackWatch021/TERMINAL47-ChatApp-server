@@ -1,13 +1,19 @@
 // socket/events.js
 // import roomManager from "../utils/roomManager.js";
-import { createRoom } from "../utils/roomManager.js";
+import {
+  createRoom,
+  addUser,
+  roomExists,
+  removeUser,
+  setRoomTimer,
+} from "../utils/roomManager.js";
 
 const socketEvent = async (io, client) => {
   io.on("connection", (socket) => {
     console.log(`👤 User connected: ${socket.id}`);
 
     // ======== ROOM CREATION ========
-    socket.on("create_room", (data, callback) => {
+    socket.on("create_room", async (data, callback) => {
       try {
         const { roomName, durationMinutes } = data;
         console.log(
@@ -35,13 +41,16 @@ const socketEvent = async (io, client) => {
 
         // Create room
         // const room = roomManager.createRoom(
-        const room = createRoom(roomName, durationMinutes, client);
+        const room = await createRoom(roomName, durationMinutes, client);
 
         callback({
           success: true,
           roomId: room.roomId,
           message: "Room created",
         });
+
+        // Start the server-side expiry timer → emits room_disposed to clients
+        setRoomTimer(room.roomId, durationMinutes, io);
 
         console.log(`✅ Room created successfully, roomId : ${room.roomId}`);
       } catch (error) {
@@ -52,23 +61,23 @@ const socketEvent = async (io, client) => {
     });
 
     // ======== USER JOIN ========
-    socket.on("join_room", (data, callback) => {
+    socket.on("join_room", async (data, callback) => {
       try {
         const { roomId, userName } = data;
-        console.log("user joining the room", roomId, userName);
+        // console.log("user joining the room", roomId, userName);
 
         if (!roomId || !userName) {
-          callback({
+          return callback({
             success: false,
             message: "Room ID and user name required",
           });
         }
 
         // Add user to room
-        const result = roomManager.addUser(roomId, socket.id, userName);
+        const result = await addUser(roomId, socket.id, userName, client);
 
         if (!result.success) {
-          callback({
+          return callback({
             success: false,
             message: result.message,
           });
@@ -102,7 +111,7 @@ const socketEvent = async (io, client) => {
     });
 
     // ======== SEND MESSAGE ========
-    socket.on("send_message", (data, callback) => {
+    socket.on("send_message", async (data, callback) => {
       try {
         const { roomId, message } = data;
         const { userId, userName } = socket.data;
@@ -114,14 +123,15 @@ const socketEvent = async (io, client) => {
           });
         }
 
-        const room = roomManager.getRoom(roomId);
-        if (!room) {
+        //Check if room exists
+        const room = await roomExists(roomId, client);
+
+        if (!room.success) {
           return callback({
             success: false,
             message: "Room not found",
           });
         }
-
         const messageData = {
           userName,
           message: message.trim(),
@@ -145,15 +155,15 @@ const socketEvent = async (io, client) => {
     });
 
     // ======== ROOM EXISTS ========
-    socket.on("room_exists", (data, callback) => {
+    socket.on("room_exists", async (data, callback) => {
       try {
         const { roomId } = data;
         if (!roomId) {
-          callback({ success: false, message: "Room id is necessary" });
+          return callback({ success: false, message: "Room id is necessary" });
         }
 
-        const result = roomManager.roomExists(roomId);
-
+        const result = await roomExists(roomId, client);
+        console.log("---------do the room exists-----------", result);
         if (result.success) {
           callback({ success: true, message: "Room exists" });
         } else {
@@ -168,21 +178,19 @@ const socketEvent = async (io, client) => {
     });
 
     // ======== DISCONNECT ========
-    socket.on("disconnect", () => {
+    socket.on("disconnect", async () => {
       const { roomId, userId, userName } = socket.data;
 
       if (roomId) {
         // Remove user from room
-        roomManager.removeUser(roomId, userId);
+        const result = await removeUser(roomId, userId, client);
 
-        const room = roomManager.getRoom(roomId);
-
-        if (room) {
+        if (result.success) {
           // Notify others
           socket.to(roomId).emit("user_left", {
             userId,
             userName,
-            userCount: room.userCount,
+            userCount: result.userCount,
           });
         } else {
           io.to(roomId).emit("room_disposed", {
