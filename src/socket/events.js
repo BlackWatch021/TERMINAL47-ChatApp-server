@@ -115,6 +115,7 @@ const socketEvent = async (io, client) => {
       try {
         const { roomId, message } = data;
         const { userId, userName } = socket.data;
+        console.log("-------user Message------------", message);
 
         if (!roomId || !message) {
           return callback({
@@ -134,7 +135,8 @@ const socketEvent = async (io, client) => {
         }
         const messageData = {
           userName,
-          message: message.trim(),
+          // message: message.trim(),
+          message: message,
         };
         // const messageData = {
         //   id: uuidv4(),
@@ -163,7 +165,6 @@ const socketEvent = async (io, client) => {
         }
 
         const result = await roomExists(roomId, client);
-        console.log("---------do the room exists-----------", result);
         if (result.success) {
           callback({ success: true, message: "Room exists" });
         } else {
